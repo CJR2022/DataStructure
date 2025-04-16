@@ -1,111 +1,232 @@
+//2022041015 최정륜
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
+#include <windows.h>
 
-typedef struct 
+#define COMPARE(x, y) ((x) > (y) ? 1 : ((x) < (y) ? -1 : 0))
+
+typedef struct // 초기버전 다항식
 {
-    int coef;
-    int *expon;
+    int degree;
+    int *coef;
 } Polynomial;
 
-Polynomial Zero();
-bool IsZero(Polynomial poly);
-int Coef(Polynomial poly, int expon);
-int Lead_Exp(Polynomial poly);
-Polynomial Add(Polynomial poly1, Polynomial poly2);
-Polynomial Attatch(Polynomial poly, int coef, int expon);
-Polynomial Remove(Polynomial poly, int expon);
+typedef struct { // 개선된 버전 다항식
+    int coef;
+    int expon;
+} Term;
+Term *terms; // 모든 다항식을 저장하는 전역 배열
+int avail = 0; // 다음 사용 가능한 위치
+
+int compare(const void *a, const void *b); // 내림차순 비교 
+Polynomial padd_ver1(Polynomial a, Polynomial b); //다항식 덧셈(초기버전)
+void WritePolynomialToFile_v1(FILE *file, Polynomial poly); //다항식 출력(초기버전)
+void padd_ver2(int startA, int finishA, int startB, int finishB, int *startD, int *finishD); //다항식 덧셈(개선된 버전)
+void WritePolynomialToFile_v2(FILE *file, int start, int finish); //다항식 출력(개선된 버전)
+void attach(int coefficient, int exponent); //다항식 항 추가(개선된 버전)
+
+// 수행 시간 측정 함수
+double getElapsedTime(LARGE_INTEGER start, LARGE_INTEGER end, LARGE_INTEGER frequency) {
+    return (double)(end.QuadPart - start.QuadPart) / frequency.QuadPart;
+}
+
 
 int main() 
 {
-    int size_FirstPoly = 0;
-    int size_SecondPoly = 0;
-    Polynomial FirstPoly;
-    Polynomial SecondPoly;
+    LARGE_INTEGER frequency, start1, end1, start2, end2, start3, end3; // 고해상도 타이머 변수
+    QueryPerformanceFrequency(&frequency);
+    int size_FirstPoly = 0; // 첫 번째 다항식의 항 개수
+    int size_SecondPoly = 0; // 두 번째 다항식의 항 개수
     FILE *file = fopen("input.txt", "r"); // 파일 열기
     if (file == NULL) {
         perror("파일을 열 수 없습니다.");
         return 1;
     }
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // 초기버전
+    QueryPerformanceCounter(&start1); // 시작 시간 측정
+    Polynomial FirstPoly = {0, NULL};
+    Polynomial SecondPoly = {0, NULL};
     fscanf(file, "%d %d", &size_FirstPoly, &size_SecondPoly); //두 다항식의 항 개수 읽기
+    for(int i = 0, tmp = 0; i < size_FirstPoly; i++) { // 첫 번째 다항식 최대 차수 읽기
+        fscanf(file, "%*d %d", &tmp);
+        if (tmp > FirstPoly.degree)
+            FirstPoly.degree = tmp;
+    }
+    for(int i = 0, tmp = 0; i < size_SecondPoly; i++) { // 두 번째 다항식 최대 차수 읽기
+        fscanf(file, "%*d %d", &tmp);
+        if (tmp > SecondPoly.degree)
+            SecondPoly.degree = tmp;
+    }
+    FirstPoly.coef = (int *)calloc((FirstPoly.degree + 1), sizeof(int)); // 첫 번째 다항식 동적 메모리 할당
+    SecondPoly.coef = (int *)calloc((SecondPoly.degree + 1), sizeof(int)); // 두 번째 다항식 동적 메모리 할당
+    rewind(file); // 파일 포인터를 처음으로 되돌리기
+    fscanf(file, "%*d %*d"); 
+    for(int coef, expon, i = 0; i < size_FirstPoly; i++) {
+        fscanf(file, "%d %d", &coef, &expon); // 첫 번째 다항식의 차수별 계수 읽기
+        FirstPoly.coef[FirstPoly.degree-expon] = coef; // 해당 차수에 계수 저장
+    }
+    for(int coef, expon, i = 0; i < size_SecondPoly; i++) {
+        fscanf(file, "%d %d", &coef, &expon); // 두 번째 다항식의 차수별 계수 읽기
+        SecondPoly.coef[SecondPoly.degree-expon] = coef; // 해당 차수에 계수 저장
+    }
+    Polynomial result = padd_ver1(FirstPoly, SecondPoly); // 다항식 덧셈 수행
+    QueryPerformanceCounter(&end1); // 종료 시간 측정
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    rewind(file); // 파일 포인터를 처음으로 되돌리기
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // 개선된 버전
+    QueryPerformanceCounter(&start2); // 시작 시간 측정
+    terms = (Term *)malloc(2 * (size_FirstPoly + size_SecondPoly) * sizeof(Term)); // 최악의 경우를 가정한 동적 메모리 할당
+    avail = size_FirstPoly + size_SecondPoly; // 사용 가능한 위치 초기화
+    fscanf(file, "%*d %*d"); 
 
-    FirstPoly.expon = malloc(size_FirstPoly * sizeof(int)); // 동적 메모리 할당
-    SecondPoly.expon = malloc(size_FirstPoly * sizeof(int)); // 동적 메모리 할당
-    
-    for(int i = 0; i < size_FirstPoly; i++) {
-        fscanf(file, "%d %d", &FirstPoly.coef, &FirstPoly.expon[i]); // 첫 번째 다항식의 차수별 계수 읽기
+    // 두 다항식의 계수, 차수 입력 
+    for(int i=0; i < size_FirstPoly; i++) {
+        fscanf(file, "%d %d", &terms[i].coef, &terms[i].expon);
     }
-    for(int i = 0; i < size_SecondPoly; i++) {
-        fscanf(file, "%d %d", &SecondPoly.coef, &SecondPoly.expon[i]); // 두 번째 다항식의 차수별 계수 읽기
+    for(int i=0; i < size_SecondPoly; i++) {
+        fscanf(file, "%d %d", &terms[i + size_FirstPoly].coef, &terms[i + size_FirstPoly].expon);
     }
+    qsort(terms, size_FirstPoly, sizeof(Term), compare); // 첫 번째 다항식 정렬
+    qsort(terms + size_FirstPoly, size_SecondPoly, sizeof(Term), compare); // 두 번째 다항식 정렬
+    int startResult, finishResult; // 결과 다항식의 시작과 끝 위치
+    padd_ver2(0, size_FirstPoly - 1, size_FirstPoly, size_FirstPoly + size_SecondPoly - 1, &startResult, &finishResult); // 개선된 다항식 덧셈 수행
+    QueryPerformanceCounter(&end2); // 종료 시간 측정
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////
     fclose(file); // 파일 닫기
+    FILE *outputFile = fopen("output.txt", "w");
+    if (outputFile == NULL) {
+        perror("결과 파일을 열 수 없습니다.");
+        return 1;
+    }
 
-    Polynomial result = Zero(); // 결과 다항식 초기화
+    // 초기 버전 다항식 출력
+    WritePolynomialToFile_v1(outputFile, FirstPoly);
+    WritePolynomialToFile_v1(outputFile, SecondPoly);
+    WritePolynomialToFile_v1(outputFile, result);
+
+    // 개선된 버전 다항식 출력
+    WritePolynomialToFile_v2(outputFile, 0, size_FirstPoly-1);
+    WritePolynomialToFile_v2(outputFile, size_FirstPoly, size_FirstPoly + size_SecondPoly - 1);
+    WritePolynomialToFile_v2(outputFile, startResult, finishResult);
+
+    // 수행 시간 출력
+    fprintf(outputFile, "%lf\t%lf", 
+        getElapsedTime(start1, end1, frequency), getElapsedTime(start2, end2, frequency));
+
+    fclose(outputFile);
 
     // 동적 메모리 해제
-    free(FirstPoly.expon);
-    free(SecondPoly.expon);
+    free(FirstPoly.coef);
+    free(SecondPoly.coef);
+    free(result.coef);
+    free(terms);
+    result.coef = NULL;
+    FirstPoly.coef = NULL;
+    SecondPoly.coef = NULL;
 
     return 0;
 }
 
-Polynomial Zero() 
-{
-    Polynomial poly = {0, 0};
-    return poly;
-}
-bool IsZero(Polynomial poly) 
-{
-    return (poly.coef == 0 && poly.expon == 0);
-}
-int Coef(Polynomial poly, int expon) 
-{
-    if (poly.expon == expon) 
-        return poly.coef;
-    else 
-        return 0;
-}
-int Lead_Exp(Polynomial poly) 
-{
-    return poly.expon;
-}
-Polynomial Add(Polynomial poly1, Polynomial poly2) 
-{
-    Polynomial result = {0, 0};
-    if (poly1.expon == poly2.expon) 
-    {
-        result.coef = poly1.coef + poly2.coef;
-        result.expon = poly1.expon;
-    } 
-    else if (poly1.expon > poly2.expon) 
-    {
-        result.coef = poly1.coef;
-        result.expon = poly1.expon;
-    } 
-    else 
-    {
-        result.coef = poly2.coef;
-        result.expon = poly2.expon;
+//다항식 a, b 각각의 최대 차수만큼 반복하여 d에 계수 덧셈
+Polynomial padd_ver1(Polynomial a, Polynomial b) {
+    int maxDegree = (a.degree > b.degree) ? a.degree : b.degree; // 결과 다항식의 최대 차수
+    Polynomial d = {maxDegree, NULL};
+    d.coef = (int *)calloc((maxDegree + 1), sizeof(int));
+
+    // a의 항 추가
+    for (int i = 0; i <= a.degree; i++) {
+        if (a.coef[i] != 0) { // 0 계수는 무시
+            d.coef[maxDegree - (a.degree - i)] += a.coef[i];
+        }
     }
-    return result;
-}
-Polynomial Attatch(Polynomial poly, int coef, int expon) 
-{
-    Polynomial newPoly = {coef, expon};
-    return newPoly;
-}
-Polynomial Remove(Polynomial poly, int expon) 
-{
-    Polynomial newPoly = {0, 0};
-    if (poly.expon == expon) 
-    {
-        newPoly.coef = 0;
-        newPoly.expon = 0;
-    } 
-    else 
-    {
-        newPoly.coef = poly.coef;
-        newPoly.expon = poly.expon;
+
+    // b의 항 추가
+    for (int i = 0; i <= b.degree; i++) {
+        if (b.coef[i] != 0) { // 0 계수는 무시
+            d.coef[maxDegree - (b.degree - i)] += b.coef[i];
+        }
     }
-    return newPoly;
+    return d;
 }
+
+void WritePolynomialToFile_v1(FILE *file, Polynomial poly) {
+    bool isFirstTerm = true;
+    for (int i = 0; i <= poly.degree; i++) {
+        if (poly.coef[i] != 0) {
+            if (!isFirstTerm) {
+                fprintf(file, " + ");
+            }
+            isFirstTerm = false;
+            fprintf(file, "%dx^%d", poly.coef[i], poly.degree - i);
+        }
+    }
+    fprintf(file, "\n");
+}
+
+void padd_ver2(int startA, int finishA, int startB, int finishB, int *startD, int *finishD) {
+    *startD = avail; // 결과 다항식의 시작 위치
+    while (startA <= finishA && startB <= finishB) {
+        switch (COMPARE(terms[startA].expon, terms[startB].expon)) {
+            case -1: // B의 차수가 더 클 때
+                attach(terms[startB].coef, terms[startB].expon);
+                startB++;
+                break;
+            case 0: // A와 B의 차수가 같을 때
+                if (terms[startA].coef + terms[startB].coef != 0) { // 계수 합이 0이 아닐 때만 추가
+                    attach(terms[startA].coef + terms[startB].coef, terms[startA].expon);
+                }
+                startA++;
+                startB++;
+                break;
+            case 1: // A의 차수가 더 클 때
+                attach(terms[startA].coef, terms[startA].expon);
+                startA++;
+                break;
+        }
+    }
+
+    // 남아 있는 항 추가
+    while (startA <= finishA) {
+        attach(terms[startA].coef, terms[startA].expon);
+        startA++;
+    }
+    while (startB <= finishB) {
+        attach(terms[startB].coef, terms[startB].expon);
+        startB++;
+    }
+
+    *finishD = avail - 1; // 결과 다항식의 끝 위치
+}
+
+void attach(int coefficient, int exponent) {
+    terms[avail].coef = coefficient;
+    terms[avail].expon = exponent;
+    avail++;
+}
+
+void WritePolynomialToFile_v2(FILE *file, int start, int finish) {
+    bool isFirstTerm = true;
+    for (int i = start; i <= finish; i++) {
+        if (terms[i].coef != 0) {
+            if (!isFirstTerm) {
+                fprintf(file, " + ");
+            }
+            isFirstTerm = false;
+            fprintf(file, "%dx^%d", terms[i].coef, terms[i].expon);
+        }
+    }
+    fprintf(file, "\n");
+}
+
+int compare(const void *a, const void *b) {
+    Term *termA = (Term *)a;
+    Term *termB = (Term *)b;
+    return COMPARE(termB->expon, termA->expon); // 내림차순 비교
+}
+
+

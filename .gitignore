@@ -1,0 +1,10 @@
+code/poly.exe
+input1.txt
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/settings.json
+.vscode/tasks.json
+code/build/Debug/outDebug.exe
+code/build/Debug/poly.o
+tmp/2025_DS_Programming_Assignment_1/2025_DS_Programming_Assignment_1.pdf
+tmp/2025_DS_Programming_Assignment_1/output.txt
