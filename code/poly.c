@@ -21,12 +21,35 @@ typedef struct { // 개선된 버전 다항식
 Term *terms; // 모든 다항식을 저장하는 전역 배열
 int avail = 0; // 다음 사용 가능한 위치
 
-int compare(const void *a, const void *b); // 내림차순 비교 
+typedef struct polyNode *polyPointer; 
+typedef struct polyNode { // 다항식 노드
+int coef;
+int expon;
+polyPointer link;
+};
+
+
 Polynomial padd_ver1(Polynomial a, Polynomial b); //다항식 덧셈(초기버전)
+
 void WritePolynomialToFile_v1(FILE *file, Polynomial poly); //다항식 출력(초기버전)
+
 void padd_ver2(int startA, int finishA, int startB, int finishB, int *startD, int *finishD); //다항식 덧셈(개선된 버전)
+
 void WritePolynomialToFile_v2(FILE *file, int start, int finish); //다항식 출력(개선된 버전)
+
 void attach(int coefficient, int exponent); //다항식 항 추가(개선된 버전)
+
+int compare(const void *a, const void *b); // 내림차순 비교 
+
+polyPointer createLinkedListFromTerms(Term *terms, int size); //다항식 연결리스트 생성
+
+polyPointer padd_ver3(polyPointer a, polyPointer b); //다항식 덧셈(연결리스트 버전)
+
+void WritePolynomialToFile_v3(FILE *file, polyPointer poly); //다항식 출력(연결리스트 버전)
+
+void attach_link(int coefficient, int exponent, polyPointer *p); //다항식 항 추가(연결리스트 버전)
+
+void freePoly(polyPointer poly); //연결리스트 메모리 해제
 
 // 수행 시간 측정 함수
 double getElapsedTime(LARGE_INTEGER start, LARGE_INTEGER end, LARGE_INTEGER frequency) {
@@ -45,6 +68,7 @@ int main()
         perror("파일을 열 수 없습니다.");
         return 1;
     }
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // 초기버전
     QueryPerformanceCounter(&start1); // 시작 시간 측정
@@ -76,7 +100,9 @@ int main()
     Polynomial result = padd_ver1(FirstPoly, SecondPoly); // 다항식 덧셈 수행
     QueryPerformanceCounter(&end1); // 종료 시간 측정
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+   
     rewind(file); // 파일 포인터를 처음으로 되돌리기
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // 개선된 버전
     QueryPerformanceCounter(&start2); // 시작 시간 측정
@@ -97,7 +123,41 @@ int main()
     padd_ver2(0, size_FirstPoly - 1, size_FirstPoly, size_FirstPoly + size_SecondPoly - 1, &startResult, &finishResult); // 개선된 다항식 덧셈 수행
     QueryPerformanceCounter(&end2); // 종료 시간 측정
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    
+    rewind(file); // 파일 포인터를 처음으로 되돌리기
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // 연결리스트 버전
+    QueryPerformanceCounter(&start3); // 시작 시간 측정
+    polyPointer FirstPoly_v3, SecondPoly_v3, result_v3;
+    FirstPoly_v3 = (polyPointer)malloc(sizeof(struct polyNode)); 
+    SecondPoly_v3 = (polyPointer)malloc(sizeof(struct polyNode)); 
+    FirstPoly_v3->link = NULL; 
+    SecondPoly_v3->link = NULL; 
+    fscanf(file, "%*d %*d");
+    // 첫 번째 다항식 읽기 및 정렬
+    Term *firstTerms = (Term *)malloc(size_FirstPoly * sizeof(Term));
+    for (int i = 0; i < size_FirstPoly; i++) {
+        fscanf(file, "%d %d", &firstTerms[i].coef, &firstTerms[i].expon);
+    }
+    qsort(firstTerms, size_FirstPoly, sizeof(Term), compare); // 첫 번째 다항식 정렬
+    FirstPoly_v3 = createLinkedListFromTerms(firstTerms, size_FirstPoly);
+    free(firstTerms); // 배열 메모리 해제
+
+    // 두 번째 다항식 읽기 및 정렬
+    Term *secondTerms = (Term *)malloc(size_SecondPoly * sizeof(Term));
+    for (int i = 0; i < size_SecondPoly; i++) {
+        fscanf(file, "%d %d", &secondTerms[i].coef, &secondTerms[i].expon);
+    }
+    qsort(secondTerms, size_SecondPoly, sizeof(Term), compare); // 두 번째 다항식 정렬
+    SecondPoly_v3 = createLinkedListFromTerms(secondTerms, size_SecondPoly);
+    free(secondTerms); // 배열 메모리 해제
+    result_v3 = padd_ver3(FirstPoly_v3, SecondPoly_v3); // 연결리스트 다항식 덧셈 수행
+    QueryPerformanceCounter(&end3); // 종료 시간 측정
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    
     fclose(file); // 파일 닫기
+
     FILE *outputFile = fopen("output.txt", "w");
     if (outputFile == NULL) {
         perror("결과 파일을 열 수 없습니다.");
@@ -114,9 +174,15 @@ int main()
     WritePolynomialToFile_v2(outputFile, size_FirstPoly, size_FirstPoly + size_SecondPoly - 1);
     WritePolynomialToFile_v2(outputFile, startResult, finishResult);
 
+    // 연결리스트 버전 다항식 출력
+    WritePolynomialToFile_v3(outputFile, FirstPoly_v3);
+    WritePolynomialToFile_v3(outputFile, SecondPoly_v3);
+    WritePolynomialToFile_v3(outputFile, result_v3);
+    
+
     // 수행 시간 출력
-    fprintf(outputFile, "%lf\t%lf", 
-        getElapsedTime(start1, end1, frequency), getElapsedTime(start2, end2, frequency));
+    fprintf(outputFile, "%lf\t%lf\t%lf\n", 
+        getElapsedTime(start1, end1, frequency), getElapsedTime(start2, end2, frequency), getElapsedTime(start3, end3, frequency)); // 수행 시간 출력
 
     fclose(outputFile);
 
@@ -125,9 +191,16 @@ int main()
     free(SecondPoly.coef);
     free(result.coef);
     free(terms);
+    freePoly(FirstPoly_v3); // 연결리스트 메모리 해제
+    freePoly(SecondPoly_v3); // 연결리스트 메모리 해제
+    freePoly(result_v3); // 연결리스트 메모리 해제
     result.coef = NULL;
     FirstPoly.coef = NULL;
     SecondPoly.coef = NULL;
+    FirstPoly_v3 = NULL;
+    SecondPoly_v3 = NULL;
+    result_v3 = NULL;
+
 
     return 0;
 }
@@ -229,4 +302,95 @@ int compare(const void *a, const void *b) {
     return COMPARE(termB->expon, termA->expon); // 내림차순 비교
 }
 
+polyPointer createLinkedListFromTerms(Term *terms, int size) {
+    polyPointer head = NULL, rear = NULL;
 
+    for (int i = 0; i < size; i++) {
+        polyPointer temp = (polyPointer)malloc(sizeof(struct polyNode));
+        temp->coef = terms[i].coef;
+        temp->expon = terms[i].expon;
+        temp->link = NULL;
+
+        if (head == NULL) {
+            head = temp;
+            rear = temp;
+        } else {
+            rear->link = temp;
+            rear = temp;
+        }
+    }
+    return head;
+}
+
+polyPointer padd_ver3(polyPointer a, polyPointer b){
+    polyPointer c, rear, temp;
+    rear = (polyPointer)malloc(sizeof(struct polyNode));
+    c = rear; // 결과 다항식의 헤드
+    int sum = 0;
+    while(a != NULL && b != NULL){
+        switch(COMPARE(a->expon, b->expon)){
+            case -1: // B의 차수가 더 클 때
+                attach_link(b->coef, b->expon, &rear); // 새로운 항 추가
+                b = b->link;
+                break;
+            case 0: // A와 B의 차수가 같을 때
+                sum = a->coef + b->coef; // 계수 합
+                if(sum != 0){ // 계수 합이 0이 아닐 때만 추가
+                    attach_link(sum, a->expon, &rear); // 새로운 항 추가
+                }
+                a = a->link;
+                b = b->link;
+                break;
+            case 1: // A의 차수가 더 클 때
+                attach_link(a->coef, a->expon, &rear); // 새로운 항 추가
+                a = a->link;
+                break;
+        }
+    }
+    while(a){ // A에 남아 있는 항 추가
+        attach_link(a->coef, a->expon, &rear); // 새로운 항 추가
+        a = a->link;
+    }
+    while(b){ // B에 남아 있는 항 추가
+        attach_link(b->coef, b->expon, &rear); // 새로운 항 추가
+        b = b->link;
+    }
+    rear->link = NULL;
+    temp = c;
+    c = c->link;
+    free(temp);
+    return c; // 결과 다항식 반환
+}
+
+void attach_link(int coefficient, int exponent, polyPointer *p) {
+    polyPointer temp = malloc(sizeof(struct polyNode)); // 새로운 노드 생성
+    temp->coef = coefficient; // 계수 저장
+    temp->expon = exponent; // 차수 저장
+    temp->link = NULL; // 링크 초기화
+    (*p)->link = temp; // 새로운 항 연결
+    *p = temp; // 포인터 이동
+}
+
+void WritePolynomialToFile_v3(FILE *file, polyPointer poly) {
+    bool isFirstTerm = true;
+    while (poly != NULL) {
+        if (poly->coef != 0) {
+            if (!isFirstTerm) {
+                fprintf(file, " + ");
+            }
+            isFirstTerm = false;
+            fprintf(file, "%dx^%d", poly->coef, poly->expon);
+        }
+        poly = poly->link; // 다음 항으로 이동
+    }
+    fprintf(file, "\n");
+}
+
+void freePoly(polyPointer poly) {
+    polyPointer temp;
+    while (poly != NULL) {
+        temp = poly;
+        poly = poly->link; // 다음 노드로 이동
+        free(temp); // 현재 노드 메모리 해제
+    }
+}
